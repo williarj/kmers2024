@@ -1,0 +1,2 @@
+id,pop,pop_size,generations,sampled individuals,mutation rate,coverage,k-length,average pi
+76,0,100,1000,10,0.000100,10,10,0.028596105263157527
