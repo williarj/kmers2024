@@ -56,7 +56,7 @@ from specific requirements:
 ## How to Use
 
 For any of these processes make sure to set the simulation variables (mutation, coverage, k-length, individuals, simulation ids, etc) in
-helper_scripts/simulation.py
+`helper_scripts/simulation.py`
 
 A new simulation class can be made if you want multiple as long as the import is changed in each of the python files (`generate_standard_pop`, `generate_coverage`, `count_kmers`, `calculate_scores`)
 
