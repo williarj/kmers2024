@@ -1,0 +1,216 @@
+---
+title: "K-mer review: probability of chance match simulations"
+output: html_notebook
+---
+
+# Load packages
+```{r}
+# clear working director
+rm(list = ls())
+
+# load packages
+library(stringr)
+library(stringi)
+library(ggplot2)
+library(ggpubr)
+library(reshape2)
+library(scico)
+
+# save today's date, to differentiate plots
+today = Sys.Date()
+
+# function to get reverse complement of a DNA sequence
+reverse_complement = function(s){
+  stri_reverse(chartr("ATGC", "TACG", s))
+}
+```
+
+# Simulations
+
+This chunk can take awhile to run. At the end, the results are saved so that the results could be re-loaded and plotted at a later time.
+```{r}
+# k-mer lengths to try
+kvalues = c(5:15)
+
+# number of trials per simulation
+# cannot empirically estimate probabilities lower than or close to 1/trials
+trials = 100000
+
+# genome size
+L = 10000
+
+# multinomial for genome 1
+pa1 = c(0.25, 0.3, 0.2, 0.15, 0.35)
+pt1 = c(0.25, 0.2, 0.3, 0.35, 0.15)
+pg1 = c(0.25, 0.3, 0.2, 0.15, 0.35)
+pc1 = c(0.25, 0.2, 0.3, 0.35, 0.15)
+
+# check that probabilities sum to 1
+pa1 + pt1 + pg1 + pc1 == 1
+
+# multinomial for genome 2
+pa2 = c(0.25, 0.3, 0.2, 0.15, 0.35)
+pt2 = c(0.25, 0.2, 0.3, 0.35, 0.15)
+pg2 = c(0.25, 0.3, 0.2, 0.15, 0.35)
+pc2 = c(0.25, 0.2, 0.3, 0.35, 0.15)
+
+# check that probabilities sum to 1
+pa2 + pt2 + pg2 + pc2 == 1
+
+# initialize dataframe that will have final simulation results
+final = data.frame(matrix(NA, nrow=length(kvalues)*length(pa2), ncol=7))
+
+# initialize row of dataframe to start saving results
+n = 1
+
+# initialize DNA alphabet
+DNA = c("A", "T", "G", "C")
+
+# loop over simulation parameters
+# generate random k-mer and random genome
+# check if random k-mer has a match in random genome
+for(k in kvalues){
+for(j in 1:length(pa2)){
+  print(paste(Sys.time(), k, j, sep = " "))
+
+  pa1j = pa1[j]
+  pt1j = pt1[j]
+  pg1j = pg1[j]
+  pc1j = pc1[j]
+  
+  prob1 = c(pa1j, pt1j, pg1j, pc1j)
+  
+  pa2j = pa2[j]
+  pt2j = pt2[j]
+  pg2j = pg2[j]
+  pc2j = pc2[j]
+  
+  prob2 = c(pa2j, pt2j, pg2j, pc2j)
+  
+  results = data.frame(matrix(NA, nrow=trials, ncol=3))
+  
+  for(i in 1:trials){
+    # generate random genome
+    x2 = paste(sample(DNA, size = L, replace = T, prob = prob2), collapse = "")
+
+    # get random k-mer in x1
+    kmer = paste(sample(DNA, size = k, replace = T, prob = prob1), collapse = "")
+  
+    # get reverse complement
+    kmer_reverse_complement = reverse_complement(kmer)
+  
+    # count k-mer occurences in x2
+    observed_forward = str_count(x2, pattern = kmer)
+    
+    observed_reverse = str_count(x2, pattern = kmer_reverse_complement)
+  
+    # save results
+    results[i,] = c(i, observed_forward, observed_reverse)
+  }
+  
+  names(results) = c("ID", "observed_forward", "observed_reverse")
+  results$observed_forward = as.integer(results$observed_forward)
+  results$observed_reverse = as.integer(results$observed_reverse)
+  
+  # theoretical vs empirical probabilities
+  sigma_forward = (pa1j*pa2j + pt1j*pt2j + pg1j*pg2j + pc1j*pc2j)^k
+  
+  sigma_reverse = (pa1j*pt2j + pt1j*pa2j + pg1j*pc2j + pc1j*pg2j)^k
+
+  theo_prob_forward = 1 - ((1 - sigma_forward)^(L - k + 1))
+  
+  theo_prob_reverse = 1 - ((1 - sigma_reverse)^(L - k + 1))
+
+  emp_prob_forward = sum(results$observed_forward > 0)/nrow(results)
+  
+  emp_prob_reverse = sum(results$observed_reverse > 0)/nrow(results)
+  
+  final[n,] = c(k, paste(pa1j, pt1j, pg1j, pc1j, sep = ", "), paste(pa2j, pt2j, pg2j, pc2j, sep = ", "), theo_prob_forward, theo_prob_reverse, emp_prob_forward, emp_prob_reverse)
+  
+  n = n + 1
+  
+  }
+}
+
+# label columns
+names(final) = c("k", "probs1", "probs2", "theo_prob_forward", "theo_prob_reverse", "emp_prob_forward", "emp_prob_reverse")
+
+final$k = as.integer(final$k)
+final$theo_prob_forward = as.numeric(final$theo_prob_forward)
+final$theo_prob_reverse = as.numeric(final$theo_prob_reverse)
+final$emp_prob_forward = as.numeric(final$emp_prob_forward)
+final$emp_prob_reverse = as.numeric(final$emp_prob_reverse)
+
+# save simulation results
+write.table(final, paste("../kmer_review_chance_match_values.txt", sep = ""), sep = "\t")
+```
+
+# load results of previous simulation
+```{r eval=FALSE, include=FALSE}
+final = read.table("../kmer_review_chance_match_values.txt", header = T)
+
+prob_col = sapply(as.data.frame(do.call("rbind", str_split(final$probs1, pattern = ", "))), as.numeric)
+
+final = cbind(final, prob_col)
+
+names(final)[8:11] = c("A", "T", "G", "C")
+
+final$theo_prob_forward = log10(final$theo_prob_forward)
+final$emp_prob_forward = log10(final$emp_prob_forward)
+
+final$theo_prob_reverse = log10(final$theo_prob_reverse)
+final$emp_prob_reverse = log10(final$emp_prob_reverse)
+```
+
+# plot results
+```{r}
+p1 = ggplot(data = final, aes(x=theo_prob_forward, y=emp_prob_forward, shape = probs1, color = k)) +
+  geom_abline(slope = 1, intercept = 0, lwd = 2, color = "grey") +
+  geom_point(aes(size = 2)) +
+  geom_hline(yintercept = log10(1/trials), lty = 2, lwd = 1) +
+  scale_shape_discrete(guide="none") +
+  scale_size_continuous(guide="none") +
+  scale_color_gradientn(colors = scico(10, palette = "hawaii")) +
+  theme_classic() +
+  theme(text = element_text(size = 16)) + 
+  labs(x = "log10(Theoretical probability)\nof chance match", y = "log10(Empirical probability)\n of chance match", title = "Identical match", fill = "Base\ncomposition")
+
+p2 = ggplot(data = final, aes(x=theo_prob_reverse, y=emp_prob_reverse, shape = probs1, color = k)) +
+  geom_abline(slope = 1, intercept = 0, lwd = 2, color = "grey") +
+  geom_point(aes(size = 2)) + 
+  geom_hline(yintercept = log10(1/trials), lty = 2, lwd = 1) +
+  scale_shape_discrete(guide="none") +
+  scale_size_continuous(guide="none") +
+  scale_color_gradientn(colors = scico(10, palette = "hawaii")) +
+  theme_classic() +
+  theme(text = element_text(size = 16)) + 
+  labs(x = "log10(Theoretical probability)\nof chance match", y = "log10(Empirical probability)\n of chance match", title = "Reverse complement match", fill = "Base\ncomposition")
+
+plotdata = final[1:5, c("A", "T", "G", "C")]
+plotdata$ID = 1:5 
+
+plotdata = melt(plotdata, id = "ID")
+
+p3 = ggplot(plotdata, aes(fill=variable, y=value, x=ID, label = value)) + 
+  geom_bar(position="stack", stat="identity") +
+  geom_text(size = 5, position = position_stack(vjust = 0.5), color = "white") +
+  #scale_fill_manual(values=c("green", "red", "black", "blue")) +
+  scale_fill_manual(values = scico(4, palette = "roma")) +
+  theme_classic() +
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) +
+  annotate("point", x = 1, y = -0.05, shape = 15, size = 4) +
+  annotate("point", x = 2, y = -0.05, shape = 3, size = 4) +
+  annotate("point", x = 3, y = -0.05, shape = 17, size = 4) +
+  annotate("point", x = 4, y = -0.05, shape = 19, size = 4) +
+  annotate("point", x = 5, y = -0.05, shape = 7, size = 4) +
+  theme(text = element_text(size = 16)) + 
+  labs(y = "Probability", fill = "Base", title = "Base composition")
+
+p12 = ggarrange(p1, p2, nrow = 1, ncol = 2, common.legend = T, legend = "left", labels = list("A", "B"), font.label = list(size = 16))
+
+ggarrange(p3, p12, widths = c(0.5, 1))
+
+ggsave(paste("../figures/chance_match_sims_", today, ".png", sep = ""), width = 15, height = 5)
+```
